@@ -1,90 +1,54 @@
-;; Usage Scheduling Contract
-;; Manages reservations for tools in the workshop
+;; Tool Inventory Contract
+;; Manages the inventory of tools available in the workshop
 
 ;; Define data maps
-(define-map reservations
-  { tool-id: uint, day: uint }
+(define-map tools
+  { tool-id: uint }
   {
-    reserver: principal,
-    start-time: uint,
-    end-time: uint
+    name: (string-ascii 50),
+    description: (string-ascii 200),
+    available: bool,
+    requires-training: bool
   }
 )
 
-;; Contract dependencies
-(define-constant tool-inventory-contract 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.tool-inventory)
-(define-constant member-verification-contract 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.member-verification)
+;; Counter for tool IDs
+(define-data-var tool-counter uint u0)
 
-;; Reserve a tool
-(define-public (reserve-tool (tool-id uint) (day uint) (start-time uint) (end-time uint))
-  (let (
-    (sender tx-sender)
-    (is-member (contract-call? member-verification-contract is-active-member sender))
-    (tool (contract-call? tool-inventory-contract get-tool tool-id))
-    (requires-training (default-to false (get requires-training tool)))
-  )
-    (if (and is-member (is-some tool))
-      (if (and
-            (< start-time end-time)
-            (is-time-available tool-id day start-time end-time)
-            (or
-              (not requires-training)
-              (contract-call? member-verification-contract is-certified sender tool-id)
-            )
-          )
-        (begin
-          (map-set reservations
-            { tool-id: tool-id, day: day }
-            { reserver: sender, start-time: start-time, end-time: end-time }
-          )
-          (ok true)
-        )
-        (err u3) ;; Invalid reservation parameters
-      )
-      (err u4) ;; Not a member or tool doesn't exist
+;; Add a new tool to the inventory
+(define-public (add-tool (name (string-ascii 50)) (description (string-ascii 200)) (requires-training bool))
+  (let ((tool-id (var-get tool-counter)))
+    (begin
+      (var-set tool-counter (+ tool-id u1))
+      (map-set tools { tool-id: tool-id } { name: name, description: description, available: true, requires-training: requires-training })
+      (ok tool-id)
     )
   )
 )
 
-;; Cancel a reservation
-(define-public (cancel-reservation (tool-id uint) (day uint))
-  (let (
-    (sender tx-sender)
-    (reservation (map-get? reservations { tool-id: tool-id, day: day }))
-  )
-    (if (and
-          (is-some reservation)
-          (is-eq sender (get reserver (unwrap-panic reservation)))
-        )
+;; Update tool availability
+(define-public (set-tool-availability (tool-id uint) (available bool))
+  (let ((tool (map-get? tools { tool-id: tool-id })))
+    (if (is-some tool)
       (begin
-        (map-delete reservations { tool-id: tool-id, day: day })
+        (map-set tools
+          { tool-id: tool-id }
+          (merge (unwrap-panic tool) { available: available })
+        )
         (ok true)
       )
-      (err u5) ;; Not your reservation or doesn't exist
+      (err u1) ;; Tool not found
     )
   )
 )
 
-;; Check if a time slot is available
-(define-read-only (is-time-available (tool-id uint) (day uint) (start-time uint) (end-time uint))
-  (let ((reservation (map-get? reservations { tool-id: tool-id, day: day })))
-    (if (is-some reservation)
-      (let (
-        (existing-start (get start-time (unwrap-panic reservation)))
-        (existing-end (get end-time (unwrap-panic reservation)))
-      )
-        (or
-          (>= start-time existing-end)
-          (<= end-time existing-start)
-        )
-      )
-      true ;; No existing reservation
-    )
-  )
+;; Get tool details
+(define-read-only (get-tool (tool-id uint))
+  (map-get? tools { tool-id: tool-id })
 )
 
-;; Get reservation details
-(define-read-only (get-reservation (tool-id uint) (day uint))
-  (map-get? reservations { tool-id: tool-id, day: day })
+;; Get total number of tools
+(define-read-only (get-tool-count)
+  (var-get tool-counter)
 )
 
