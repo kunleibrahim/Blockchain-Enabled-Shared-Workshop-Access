@@ -10,8 +10,8 @@ path = 'contracts/maintenance-fund.clar'
 clarity_version = 2
 epoch = 2.5
 
-[contracts.usage-scheduling]
-path = 'contracts/usage-scheduling.clar'
+[contracts.tool-inventory]
+path = 'contracts/tool-inventory.clar'
 clarity_version = 2
 epoch = 2.5
 [repl.analysis]
